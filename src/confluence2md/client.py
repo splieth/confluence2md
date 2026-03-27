@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from atlassian import Confluence
@@ -16,6 +17,14 @@ class Page:
     url: str = ""
     version: int = 1
     parent_title: str = ""
+
+
+@dataclass
+class Attachment:
+    id: str
+    title: str
+    media_type: str
+    download_url: str
 
 
 def connect(config: ConfluenceConfig) -> Confluence:
@@ -151,3 +160,34 @@ def _build_page_url(raw: dict[str, Any], confluence: Confluence) -> str:
             base = links.get("base", confluence.url.rstrip("/"))
             return f"{base}{webui}"
     return ""
+
+
+def fetch_attachments(confluence: Confluence, page_id: str) -> list[Attachment]:
+    """Fetch all attachments for a page."""
+    results = confluence.get_attachments_from_content(page_id)  # type: ignore[no-untyped-call]
+    attachments = []
+    for item in results.get("results", []):
+        download_url = item.get("_links", {}).get("download", "")
+        attachments.append(
+            Attachment(
+                id=str(item.get("id", "")),
+                title=item.get("title", ""),
+                media_type=item.get("metadata", {}).get("mediaType", ""),
+                download_url=download_url,
+            )
+        )
+    return attachments
+
+
+def download_attachment(
+    confluence: Confluence, attachment: Attachment, dest: Path
+) -> Path:
+    """Download an attachment to the given directory. Returns the file path."""
+    dest.mkdir(parents=True, exist_ok=True)
+    filepath = dest / attachment.title
+    response = confluence.request(
+        method="GET",
+        path=attachment.download_url,
+    )
+    filepath.write_bytes(response.content)
+    return filepath
