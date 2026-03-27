@@ -80,14 +80,14 @@ def _handle_export(args: argparse.Namespace, config: Config) -> None:
 
     if args.page_id:
         page = fetch_page(confluence, args.page_id)
-        path = export_page(page, config.output)
+        path = export_page(page, config.output, confluence)
         print(f"Exported: {path}")
 
         include_children = args.include_children or config.output.include_children
         if include_children:
             children = fetch_child_pages(confluence, args.page_id)
             if children:
-                child_paths = export_pages(children, config.output)
+                child_paths = export_pages(children, config.output, confluence)
                 for p in child_paths:
                     print(f"Exported: {p}")
                 total = 1 + len(child_paths)
@@ -99,7 +99,7 @@ def _handle_export(args: argparse.Namespace, config: Config) -> None:
         if not pages:
             print("No pages found.")
             return
-        paths = export_pages(pages, config.output)
+        paths = export_pages(pages, config.output, confluence)
         for p in paths:
             print(f"Exported: {p}")
         print(f"\n{len(paths)} page(s) exported to {config.output.directory}")
@@ -108,7 +108,7 @@ def _handle_export(args: argparse.Namespace, config: Config) -> None:
         if not pages:
             print("No pages found.")
             return
-        paths = export_pages(pages, config.output)
+        paths = export_pages(pages, config.output, confluence)
         for p in paths:
             print(f"Exported: {p}")
         print(f"\n{len(paths)} page(s) exported to {config.output.directory}")
