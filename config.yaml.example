@@ -1,0 +1,17 @@
+confluence:
+  url: https://your-instance.atlassian.net/wiki
+  # Token can also be set via CONFLUENCE2MD_TOKEN environment variable
+  token: your-personal-access-token
+  # Username is required for Confluence Cloud (your email).
+  # Can also be set via CONFLUENCE2MD_USERNAME environment variable.
+  username: your-email@example.com
+
+output:
+  directory: ./export
+  filename_pattern: "{title}"
+  # Also export child pages when fetching a single page
+  include_children: false
+  # Include page labels in the metadata table
+  include_labels: true
+  # Include metadata table (space, parent, version, labels)
+  include_metadata: true

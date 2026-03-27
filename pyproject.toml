@@ -1,0 +1,60 @@
+[project]
+name = "confluence2md"
+version = "0.1.0"
+description = "Export Confluence pages to Markdown files"
+requires-python = ">=3.12"
+dependencies = [
+    "atlassian-python-api>=3.41",
+    "markdownify>=0.14",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+confluence2md = "confluence2md.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/confluence2md"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0",
+    "mypy>=1.18",
+    "ruff>=0.15",
+    "types-PyYAML>=6.0",
+]
+
+[tool.ruff]
+target-version = "py39"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", # pycodestyle errors
+    "W", # pycodestyle warnings
+    "F", # pyflakes
+    "I", # isort
+    "N", # pep8-naming
+    "UP", # pyupgrade
+    "B", # flake8-bugbear
+    "SIM", # flake8-simplify
+    "TCH", # flake8-type-checking
+    "RUF", # ruff-specific rules
+]
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+mypy_path = "src"
+packages = ["confluence2md"]
+
+[[tool.mypy.overrides]]
+module = "atlassian.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "markdownify.*"
+ignore_missing_imports = true
