@@ -75,6 +75,13 @@ confluence2md list-spaces
 confluence2md list-spaces --search "dev"
 ```
 
+## Images & attachments
+
+Images embedded in a page are downloaded into the output directory alongside the
+Markdown file and rewritten as local image links. This covers pasted/attached
+images (`<ac:image>`) as well as draw.io diagram previews. Images that point at
+an external URL are kept as remote references and are not downloaded.
+
 ## Library Usage
 
 ```python

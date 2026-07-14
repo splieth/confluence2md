@@ -1,6 +1,8 @@
 import re
+from html import escape, unescape
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 from atlassian import Confluence
 from markdownify import markdownify
@@ -60,7 +62,7 @@ def export_page(
 
     body = page.body
     if confluence:
-        body = _process_drawio_macros(body, page, output_dir, confluence)
+        body = _process_attachment_macros(body, page, output_dir, confluence)
 
     content = render_page(
         Page(
@@ -134,19 +136,38 @@ def _find_drawio_png(
     return None
 
 
-def _process_drawio_macros(
+def _process_attachment_macros(
     html: str,
     page: Page,
     output_dir: Path,
     confluence: Confluence,
 ) -> str:
-    """Replace draw.io macros with image references and download PNGs."""
-    diagram_names = _extract_drawio_diagram_names(html)
-    if not diagram_names:
+    """Download referenced attachments and rewrite macros as image links.
+
+    Handles both draw.io diagram macros and embedded images (``<ac:image>``).
+    Attachments are fetched once and shared between both processors, so pages
+    without either kind of macro incur no extra API call.
+    """
+    has_drawio = bool(_extract_drawio_diagram_names(html))
+    has_images = bool(_IMAGE_MACRO_PATTERN.search(html))
+    if not (has_drawio or has_images):
         return html
 
     attachments = fetch_attachments(confluence, page.id)
+    if has_drawio:
+        html = _process_drawio_macros(html, attachments, output_dir, confluence)
+    if has_images:
+        html = _process_images(html, attachments, output_dir, confluence)
+    return html
 
+
+def _process_drawio_macros(
+    html: str,
+    attachments: list[Attachment],
+    output_dir: Path,
+    confluence: Confluence,
+) -> str:
+    """Replace draw.io macros with image references and download PNGs."""
     macro_pattern = re.compile(
         r'<ac:structured-macro[^>]*ac:name=["\']drawio["\'][^>]*>'
         r"(.*?)</ac:structured-macro>",
@@ -170,9 +191,78 @@ def _process_drawio_macros(
             return match.group(0)
 
         download_attachment(confluence, png_attachment, output_dir)
-        return f'<img src="{png_attachment.title}" alt="{diagram_name}" />'
+        return _img_tag(png_attachment.title, diagram_name)
 
     return macro_pattern.sub(_replace_macro, html)
+
+
+# Confluence embeds images as <ac:image ...><ri:attachment ri:filename="..."/>
+# or <ri:url ri:value="..."/></ac:image>. These aren't valid XML without the
+# ac:/ri: namespace declarations, so we match them with regex like the macros.
+_IMAGE_MACRO_PATTERN = re.compile(r"<ac:image\b([^>]*)>(.*?)</ac:image>", re.DOTALL)
+_ATTACHMENT_FILENAME_PATTERN = re.compile(
+    r'<ri:attachment[^>]*\bri:filename=["\']([^"\']+)["\']'
+)
+_IMAGE_URL_PATTERN = re.compile(r'<ri:url[^>]*\bri:value=["\']([^"\']+)["\']')
+_IMAGE_ALT_PATTERN = re.compile(r'\bac:alt=["\']([^"\']*)["\']')
+
+
+def _process_images(
+    html: str,
+    attachments: list[Attachment],
+    output_dir: Path,
+    confluence: Confluence,
+) -> str:
+    """Replace ``<ac:image>`` macros with ``<img>`` tags.
+
+    Attachment-backed images are downloaded next to the Markdown file and
+    referenced locally; images pointing at an external URL are kept as remote
+    references. A macro whose attachment cannot be found on the page (for
+    example an image attached to a different page) is left untouched.
+    """
+
+    def _replace(match: re.Match[str]) -> str:
+        attrs, inner = match.group(1), match.group(2)
+        alt_match = _IMAGE_ALT_PATTERN.search(attrs)
+
+        filename_match = _ATTACHMENT_FILENAME_PATTERN.search(inner)
+        if filename_match:
+            filename = unescape(filename_match.group(1))
+            attachment = _find_attachment(filename, attachments)
+            if attachment is None:
+                return match.group(0)
+            download_attachment(confluence, attachment, output_dir)
+            alt = unescape(alt_match.group(1)) if alt_match else filename
+            return _img_tag(attachment.title, alt)
+
+        url_match = _IMAGE_URL_PATTERN.search(inner)
+        if url_match:
+            url = unescape(url_match.group(1))
+            alt = unescape(alt_match.group(1)) if alt_match else ""
+            return f'<img src="{escape(url)}" alt="{escape(alt)}" />'
+
+        return match.group(0)
+
+    return _IMAGE_MACRO_PATTERN.sub(_replace, html)
+
+
+def _find_attachment(
+    filename: str, attachments: list[Attachment]
+) -> Optional[Attachment]:
+    """Find an attachment whose title matches the given filename."""
+    for attachment in attachments:
+        if attachment.title == filename:
+            return attachment
+    return None
+
+
+def _img_tag(src: str, alt: str) -> str:
+    """Build an ``<img>`` tag pointing at a locally downloaded attachment.
+
+    The source is URL-encoded so filenames containing spaces or other special
+    characters survive the conversion to a Markdown image link.
+    """
+    return f'<img src="{quote(src)}" alt="{escape(alt)}" />'
 
 
 def _safe_filename(name: str) -> str:
